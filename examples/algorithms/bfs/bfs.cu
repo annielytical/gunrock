@@ -1,4 +1,5 @@
 #include <gunrock/algorithms/bfs.hxx>
+#include <gunrock/algorithms/bfs_base.hxx>
 #include <gunrock/util/performance.hxx>
 #include <gunrock/io/parameters.hxx>
 
@@ -77,9 +78,9 @@ void test_bfs(int num_arguments, char** argument_array) {
 
   for (int i = 0; i < source_vect.size(); i++) {
     // Record run times without collecting metrics (due to overhead)
-    run_times.push_back(gunrock::bfs::run(
-        G, source_vect[i], false, distances.data().get(),
-        predecessors.data().get(), edges_visited.data().get(), &search_depth));
+    run_times.push_back(gunrock::bfs_base::run(
+        G, source_vect[i], distances.data().get(),
+        predecessors.data().get()));
   }
 
   // Print info for last run
