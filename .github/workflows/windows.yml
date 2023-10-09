@@ -27,13 +27,6 @@ jobs:
     runs-on: windows-2019
 
     steps:
-      - name: Get more space
-        run: |
-          rd -r /usr/share/dotnet
-          rd -r /opt/ghc
-          rd -r "/usr/local/share/boost"
-          rd -r "$AGENT_TOOLSDIRECTORY"
-
       # Fetch CUDA toolkit using Jimver/cuda-toolkit
       - name: Fetch CUDA toolkit
         uses: Jimver/cuda-toolkit@v0.2.8
