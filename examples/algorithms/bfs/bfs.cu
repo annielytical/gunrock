@@ -18,6 +18,8 @@ void test_bfs(int num_arguments, char** argument_array) {
 
   using csr_t =
       format::csr_t<memory_space_t::device, vertex_t, edge_t, weight_t>;
+  using csc_t =
+      format::csc_t<memory_space_t::device, vertex_t, edge_t, weight_t>;
 
   // --
   // IO
@@ -29,6 +31,7 @@ void test_bfs(int num_arguments, char** argument_array) {
   auto [properties, coo] = mm.load(params.filename);
 
   csr_t csr;
+  csc_t csc;
 
   if (params.binary) {
     csr.read_binary(params.filename);
@@ -36,16 +39,18 @@ void test_bfs(int num_arguments, char** argument_array) {
     csr.from_coo(coo);
   }
 
+  csc.from_csr(csr);
+
   // --
   // Build graph
 
-  auto G = graph::build<memory_space_t::device>(properties, csr);
+  auto G = graph::build<memory_space_t::device>(properties, csc, csr);
 
   // --
   // Params and memory allocation
 
-  size_t n_vertices = G.get_number_of_vertices();
-  size_t n_edges = G.get_number_of_edges();
+  size_t n_vertices = G.template get_number_of_vertices<graph::graph_csr_t<memory_space_t::device, vertex_t, edge_t, weight_t>>();
+  size_t n_edges = G.template get_number_of_edges<graph::graph_csr_t<memory_space_t::device, vertex_t, edge_t, weight_t>>();
   thrust::device_vector<vertex_t> distances(n_vertices);
   thrust::device_vector<vertex_t> predecessors(n_vertices);
 

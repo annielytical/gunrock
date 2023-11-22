@@ -46,8 +46,12 @@ struct problem_t : gunrock::problem_t<graph_t> {
   using weight_t = typename graph_t::weight_type;
 
   thrust::device_vector<vertex_t> visited;  /// @todo not used.
+  thrust::device_vector<int> keep_going;
 
-  void init() override {}
+  void init() override {
+    keep_going.resize(1);
+    thrust::fill(thrust::device, keep_going.begin(), keep_going.end(), 1);
+  }
 
   void reset() override {
     auto n_vertices = this->get_graph().get_number_of_vertices();
@@ -69,6 +73,8 @@ struct enactor_t : gunrock::enactor_t<problem_t> {
   using edge_t = typename problem_t::edge_t;
   using weight_t = typename problem_t::weight_t;
   using frontier_t = typename enactor_t<problem_t>::frontier_t;
+  using csr_t = typename graph::graph_csr_t<memory_space_t::device, vertex_t, edge_t, weight_t>;
+  using csc_t = typename graph::graph_csc_t<memory_space_t::device, vertex_t, edge_t, weight_t>;
 
   void prepare_frontier(frontier_t* f,
                         gcuda::multi_context_t& context) override {
@@ -88,47 +94,68 @@ struct enactor_t : gunrock::enactor_t<problem_t> {
 
     auto iteration = this->iteration;
 
-    auto search = [distances, single_source, iteration] __host__ __device__(
-                      vertex_t const& source,    // ... source
-                      vertex_t const& neighbor,  // neighbor
-                      edge_t const& edge,        // edge
-                      weight_t const& weight     // weight (tuple).
-                      ) -> bool {
-      // If the neighbor is not visited, update the distance. Returning false
-      // here means that the neighbor is not added to the output frontier, and
-      // instead an invalid vertex is added in its place. These invalides (-1 in
-      // most cases) can be removed using a filter operator or uniquify.
+    auto keep_going = P->keep_going.data().get();
+    thrust::fill(thrust::device, keep_going, keep_going + 1, 0);
 
-      // if (distances[neighbor] != std::numeric_limits<vertex_t>::max())
-      //   return false;
-      // else
-      //   return (math::atomic::cas(
-      //               &distances[neighbor],
-      //               std::numeric_limits<vertex_t>::max(), iteration + 1) ==
-      //               std::numeric_limits<vertex_t>::max());
 
-      // Simpler logic for the above.
-      auto old_distance =
-          math::atomic::min(&distances[neighbor], iteration + 1);
-      return (iteration + 1 < old_distance);
+    auto forward = [G, distances, iteration, keep_going] __device__(vertex_t const& v) -> void {
+        
+      if (distances[v] == std::numeric_limits<vertex_t>::max()) {
+        keep_going[0] = 1;
+        return;
+      }
+      
+      edge_t start_edge = G.template get_starting_edge<csr_t>(v);
+      edge_t num_neighbors = G.template get_number_of_neighbors<csr_t>(v);
+
+      for (edge_t e = start_edge; e < start_edge + num_neighbors; ++e) {
+        vertex_t u = G.template get_destination_vertex<csr_t>(e);
+      
+        if (distances[u] != std::numeric_limits<vertex_t>::max()) {
+          continue;
+        }
+
+        distances[u] = iteration + 1;
+      }
     };
 
-    auto remove_invalids =
-        [] __host__ __device__(vertex_t const& vertex) -> bool {
-      // Returning true here means that we keep all the valid vertices.
-      // Internally, filter will automatically remove invalids and will never
-      // pass them to this lambda function.
-      return true;
+    auto backward = [G, distances, iteration, keep_going] __device__(vertex_t const& v) -> void {
+      edge_t start_edge = G.template get_starting_edge<csc_t>(v);
+      edge_t num_neighbors = G.template get_number_of_neighbors<csc_t>(v);
+
+      if (distances[v] != std::numeric_limits<vertex_t>::max()) {
+        return;
+      }
+
+      for (edge_t e = start_edge; e < start_edge + num_neighbors; ++e) {
+        vertex_t u = G.template get_source_vertex<csc_t>(e);
+
+        if (distances[u] != std::numeric_limits<vertex_t>::max()) {
+          distances[v] = iteration + 1;
+          return;
+        }
+      }
+      keep_going[0] = 1;
     };
 
-    // Execute advance operator on the provided lambda
-    operators::advance::execute<operators::load_balance_t::block_mapped>(
-        G, E, search, context);
+    //if (this->iteration < 5) {
+    //  // Execute advance operator on the provided lambda
+      operators::parallel_for::execute<operators::parallel_for_each_t::vertex>(
+          G,         // graph
+          forward,  // lambda function
+          context);  // context
 
-    // Execute filter operator to remove the invalids.
-    // @todo: Add CLI option to enable or disable this.
-    // operators::filter::execute<operators::filter_algorithm_t::compact>(
-    // G, E, remove_invalids, context);
+    //} else {
+    //  operators::parallel_for::execute<operators::parallel_for_each_t::vertex>(
+    //      G,         // graph
+    //      backward,  // lambda function
+    //      context);  // context
+    //}
+  }
+
+  virtual bool is_converged(gcuda::multi_context_t& context) {
+    auto P = this->get_problem();
+    return (P->keep_going[0] == 0);
   }
 
 };  // struct enactor_t
