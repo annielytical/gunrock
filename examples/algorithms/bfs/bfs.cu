@@ -107,7 +107,7 @@ void test_bfs(int num_arguments, char** argument_array) {
         csr, source_vect.back(), h_distances.data(), h_predecessors.data());
 
     int n_errors =
-        util::compare(distances.data().get(), h_distances.data(), n_vertices);
+        util::compare(distances.data().get(), h_distances.data(), n_vertices, util::detail::default_comparator, true);
     print::head(h_distances, 40, "CPU Distances");
 
     std::cout << "CPU Elapsed Time : " << cpu_elapsed << " (ms)" << std::endl;

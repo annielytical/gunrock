@@ -47,10 +47,18 @@ struct problem_t : gunrock::problem_t<graph_t> {
 
   thrust::device_vector<vertex_t> visited;  /// @todo not used.
   thrust::device_vector<int> keep_going;
+    
+  int n_vertices = this->get_graph().get_number_of_vertices();
+  bool switched = false;
+
+  thrust::device_vector<int> new_distances;
 
   void init() override {
     keep_going.resize(1);
+    visited.resize(1);
+    new_distances.resize(n_vertices);
     thrust::fill(thrust::device, keep_going.begin(), keep_going.end(), 1);
+    thrust::fill(thrust::device, visited.begin(), visited.end(), 0);
   }
 
   void reset() override {
@@ -95,67 +103,70 @@ struct enactor_t : gunrock::enactor_t<problem_t> {
     auto iteration = this->iteration;
 
     auto keep_going = P->keep_going.data().get();
-    thrust::fill(thrust::device, keep_going, keep_going + 1, 0);
+    auto new_distances = P->new_distances.data().get();
 
 
-    auto forward = [G, distances, iteration, keep_going] __device__(vertex_t const& v) -> void {
-        
-      if (distances[v] == std::numeric_limits<vertex_t>::max()) {
-        keep_going[0] = 1;
-        return;
-      }
-      
-      edge_t start_edge = G.template get_starting_edge<csr_t>(v);
-      edge_t num_neighbors = G.template get_number_of_neighbors<csr_t>(v);
-
-      for (edge_t e = start_edge; e < start_edge + num_neighbors; ++e) {
-        vertex_t u = G.template get_destination_vertex<csr_t>(e);
-      
-        if (distances[u] != std::numeric_limits<vertex_t>::max()) {
-          continue;
-        }
-
-        distances[u] = iteration + 1;
-      }
+    auto search = [distances, single_source, iteration] __host__ __device__(
+                      vertex_t const& source,    // ... source
+                      vertex_t const& neighbor,  // neighbor
+                      edge_t const& edge,        // edge
+                      weight_t const& weight     // weight (tuple).
+                      ) -> bool {
+      auto old_distance =
+          math::atomic::min(&distances[neighbor], iteration + 1);
+      return (iteration + 1 < old_distance);
     };
 
-    auto backward = [G, distances, iteration, keep_going] __device__(vertex_t const& v) -> void {
-      edge_t start_edge = G.template get_starting_edge<csc_t>(v);
-      edge_t num_neighbors = G.template get_number_of_neighbors<csc_t>(v);
-
+    auto backward = [G, distances, iteration, keep_going, new_distances] __device__(vertex_t const& v) -> void {
+      
       if (distances[v] != std::numeric_limits<vertex_t>::max()) {
         return;
       }
 
+      edge_t start_edge = G.template get_starting_edge<csc_t>(v);
+      edge_t num_neighbors = G.template get_number_of_neighbors<csc_t>(v);
+
       for (edge_t e = start_edge; e < start_edge + num_neighbors; ++e) {
         vertex_t u = G.template get_source_vertex<csc_t>(e);
 
-        if (distances[u] != std::numeric_limits<vertex_t>::max()) {
-          distances[v] = iteration + 1;
+        if (distances[u] == iteration) {
+          
+          new_distances[v] = iteration + 1;
+          keep_going[0] = 1;
           return;
         }
       }
-      keep_going[0] = 1;
     };
-
-    //if (this->iteration < 5) {
-    //  // Execute advance operator on the provided lambda
+    
+    
+    thrust::host_vector<vertex_t> h_visited = P->visited;
+    if (!P->switched && this->active_frontier->get_number_of_vertices() < ((P->n_vertices - h_visited) / 14)) {
+      thrust::fill(thrust::device, keep_going, keep_going + 1, 1);
+      // Execute advance operator on the provided lambda
+      operators::advance::execute<operators::load_balance_t::block_mapped>(
+          G, E, search, context);
+    } else {
+      P->switched = false;
+      thrust::fill(thrust::device, keep_going, keep_going + 1, 0);
+      thrust::copy_n(thrust::device, distances, P->n_vertices, new_distances);
+      // Execute advance operator on the provided lambda
       operators::parallel_for::execute<operators::parallel_for_each_t::vertex>(
           G,         // graph
-          forward,  // lambda function
+          backward,  // lambda function
           context);  // context
+    
+      thrust::copy_n(thrust::device, new_distances, P->n_vertices, distances);
 
-    //} else {
-    //  operators::parallel_for::execute<operators::parallel_for_each_t::vertex>(
-    //      G,         // graph
-    //      backward,  // lambda function
-    //      context);  // context
-    //}
+      
+    }
   }
 
   virtual bool is_converged(gcuda::multi_context_t& context) {
     auto P = this->get_problem();
-    return (P->keep_going[0] == 0);
+    P->visited[0] = P->visited[0] + P->active_frontier->get_number_of_vertices();
+    
+    return (P->keep_going[0] == 0) || 
+            this->get_enactor()->active_frontier->is_empty();
   }
 
 };  // struct enactor_t
