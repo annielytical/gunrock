@@ -140,13 +140,14 @@ struct enactor_t : gunrock::enactor_t<problem_t> {
     
     
     thrust::host_vector<vertex_t> h_visited = P->visited;
-    if (!P->switched && this->active_frontier->get_number_of_vertices() < ((P->n_vertices - h_visited) / 14)) {
+    //if (!(P->switched) && (this->active_frontier->get_number_of_elements() < ((P->n_vertices - h_visited[0]) / 14))) {
+    if (iteration < 40) {
       thrust::fill(thrust::device, keep_going, keep_going + 1, 1);
       // Execute advance operator on the provided lambda
       operators::advance::execute<operators::load_balance_t::block_mapped>(
           G, E, search, context);
     } else {
-      P->switched = false;
+      P->switched = true;
       thrust::fill(thrust::device, keep_going, keep_going + 1, 0);
       thrust::copy_n(thrust::device, distances, P->n_vertices, new_distances);
       // Execute advance operator on the provided lambda
@@ -163,7 +164,7 @@ struct enactor_t : gunrock::enactor_t<problem_t> {
 
   virtual bool is_converged(gcuda::multi_context_t& context) {
     auto P = this->get_problem();
-    P->visited[0] = P->visited[0] + P->active_frontier->get_number_of_vertices();
+    P->visited[0] = P->visited[0] + this->get_enactor()->active_frontier->get_number_of_elements();
     
     return (P->keep_going[0] == 0) || 
             this->get_enactor()->active_frontier->is_empty();
