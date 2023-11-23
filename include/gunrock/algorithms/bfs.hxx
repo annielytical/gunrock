@@ -49,6 +49,7 @@ struct problem_t : gunrock::problem_t<graph_t> {
   thrust::device_vector<int> keep_going;
     
   int n_vertices = this->get_graph().get_number_of_vertices();
+  int n_edges = this->get_graph().get_number_of_edges();
   bool switched = false;
 
   thrust::device_vector<int> new_distances;
@@ -63,6 +64,7 @@ struct problem_t : gunrock::problem_t<graph_t> {
 
   void reset() override {
     auto n_vertices = this->get_graph().get_number_of_vertices();
+    auto n_edges = this->get_graph().get_number_of_edges();
     auto d_distances = thrust::device_pointer_cast(this->result.distances);
     thrust::fill(thrust::device, d_distances + 0, d_distances + n_vertices,
                  std::numeric_limits<vertex_t>::max());
@@ -131,7 +133,7 @@ struct enactor_t : gunrock::enactor_t<problem_t> {
 
         if (distances[u] == iteration) {
           
-          new_distances[v] = iteration + 1;
+          new_distances[v] = distances[u] + 1;
           keep_going[0] = 1;
           return;
         }
@@ -139,9 +141,8 @@ struct enactor_t : gunrock::enactor_t<problem_t> {
     };
     
     
-    thrust::host_vector<vertex_t> h_visited = P->visited;
-    //if (!(P->switched) && (this->active_frontier->get_number_of_elements() < ((P->n_vertices - h_visited[0]) / 14))) {
-    if (iteration < 40) {
+    if (!(P->switched) &&  
+       (this->active_frontier->get_number_of_elements() < ((P->n_edges) / 14))) {
       thrust::fill(thrust::device, keep_going, keep_going + 1, 1);
       // Execute advance operator on the provided lambda
       operators::advance::execute<operators::load_balance_t::block_mapped>(
@@ -164,10 +165,10 @@ struct enactor_t : gunrock::enactor_t<problem_t> {
 
   virtual bool is_converged(gcuda::multi_context_t& context) {
     auto P = this->get_problem();
-    P->visited[0] = P->visited[0] + this->get_enactor()->active_frontier->get_number_of_elements();
+    auto f = this->get_enactor()->active_frontier;
+    P->visited[0] = P->visited[0] + f->get_number_of_elements(); 
     
-    return (P->keep_going[0] == 0) || 
-            this->get_enactor()->active_frontier->is_empty();
+    return (P->keep_going[0] == 0) || f->is_empty();
   }
 
 };  // struct enactor_t
