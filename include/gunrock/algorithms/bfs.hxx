@@ -133,7 +133,7 @@ struct enactor_t : gunrock::enactor_t<problem_t> {
 
         if (distances[u] == iteration) {
           
-          new_distances[v] = distances[u] + 1;
+          distances[v] = distances[u] + 1;
           keep_going[0] = 1;
           return;
         }
@@ -142,7 +142,7 @@ struct enactor_t : gunrock::enactor_t<problem_t> {
     
     
     if (!(P->switched) &&  
-       (this->active_frontier->get_number_of_elements() < ((P->n_edges) / 14))) {
+       (this->active_frontier->get_number_of_elements() < ((P->n_edges) / 196))) {
       thrust::fill(thrust::device, keep_going, keep_going + 1, 1);
       // Execute advance operator on the provided lambda
       operators::advance::execute<operators::load_balance_t::block_mapped>(
@@ -150,16 +150,11 @@ struct enactor_t : gunrock::enactor_t<problem_t> {
     } else {
       P->switched = true;
       thrust::fill(thrust::device, keep_going, keep_going + 1, 0);
-      thrust::copy_n(thrust::device, distances, P->n_vertices, new_distances);
       // Execute advance operator on the provided lambda
       operators::parallel_for::execute<operators::parallel_for_each_t::vertex>(
           G,         // graph
           backward,  // lambda function
           context);  // context
-    
-      thrust::copy_n(thrust::device, new_distances, P->n_vertices, distances);
-
-      
     }
   }
 
