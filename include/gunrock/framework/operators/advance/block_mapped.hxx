@@ -134,7 +134,7 @@ __global__ void __launch_bounds__(THREADS_PER_BLOCK, 2)
 
     // If the vertex is valid, get its edge, neighbor and edge weight.
     auto e = sedges[id] + i - degrees[id];
-    auto n = G.get_destination_vertex(e);
+    auto n = input_type == advance_direction_t::forward ? G.get_destination_vertex(e) : G.get_source_vertex(e);
     auto w = G.get_edge_weight(e);
 
 #if (ESSENTIALS_COLLECT_METRICS)

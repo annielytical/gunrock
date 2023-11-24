@@ -30,27 +30,28 @@ void test_bfs(int num_arguments, char** argument_array) {
   io::matrix_market_t<vertex_t, edge_t, weight_t> mm;
   auto [properties, coo] = mm.load(params.filename);
 
-  csr_t csr;
+  csr_t* csr = new csr_t();
   csc_t csc;
 
   if (params.binary) {
-    csr.read_binary(params.filename);
+    (*csr).read_binary(params.filename);
   } else {
-    csr.from_coo(coo);
+    (*csr).from_coo(coo);
   }
 
-  csc.from_csr(csr);
+  csc.from_csr(*csr);
+  delete csr;
 
   // --
   // Build graph
 
-  auto G = graph::build<memory_space_t::device>(properties, csc, csr);
+  auto G = graph::build<memory_space_t::device>(properties, csc);
 
   // --
   // Params and memory allocation
 
-  size_t n_vertices = G.template get_number_of_vertices<graph::graph_csr_t<memory_space_t::device, vertex_t, edge_t, weight_t>>();
-  size_t n_edges = G.template get_number_of_edges<graph::graph_csr_t<memory_space_t::device, vertex_t, edge_t, weight_t>>();
+  size_t n_vertices = G.get_number_of_vertices();
+  size_t n_edges = G.get_number_of_edges();
   thrust::device_vector<vertex_t> distances(n_vertices);
   thrust::device_vector<vertex_t> predecessors(n_vertices);
 
@@ -95,24 +96,6 @@ void test_bfs(int num_arguments, char** argument_array) {
   std::cout << "GPU Elapsed Time : " << run_times[n_runs - 1] << " (ms)"
             << std::endl;
 
-  // --
-  // CPU Run
-
-  if (params.validate) {
-    thrust::host_vector<vertex_t> h_distances(n_vertices);
-    thrust::host_vector<vertex_t> h_predecessors(n_vertices);
-
-    // Validate with last source in source vector
-    float cpu_elapsed = bfs_cpu::run<csr_t, vertex_t, edge_t>(
-        csr, source_vect.back(), h_distances.data(), h_predecessors.data());
-
-    int n_errors =
-        util::compare(distances.data().get(), h_distances.data(), n_vertices, util::detail::default_comparator, true);
-    print::head(h_distances, 40, "CPU Distances");
-
-    std::cout << "CPU Elapsed Time : " << cpu_elapsed << " (ms)" << std::endl;
-    std::cout << "Number of errors : " << n_errors << std::endl;
-  }
 }
 
 int main(int argc, char** argv) {
