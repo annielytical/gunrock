@@ -1,6 +1,7 @@
 #pragma once
 
 #include <gunrock/framework/operators/configs.hxx>
+#include <gunrock/framework/benchmark.hxx>
 #include <thrust/remove.h>
 
 namespace gunrock {
@@ -20,7 +21,18 @@ void execute(graph_t& G,
   output->reserve(input->get_number_of_elements());
   output->set_number_of_elements(input->get_number_of_elements());
 
-  auto predicate = [=] __host__ __device__(type_t const& i) -> bool {
+  auto predicate = [=] __device__(type_t const& i) -> bool {
+
+#if (ESSENTIALS_COLLECT_METRICS)
+    if (input->get_kind() ==
+        gunrock::frontier::frontier_kind_t::vertex_frontier) {
+      benchmark::LOG_VERTEX_VISITED(1);
+    } else {
+      benchmark::LOG_EDGE_VISITED(1);
+      benchmark::LOG_VERTEX_VISITED(2);
+    }
+#endif
+
     return gunrock::util::limits::is_valid(i) ? !op(i) : true;
   };
 

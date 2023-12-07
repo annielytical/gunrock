@@ -46,13 +46,15 @@ struct parameters_t {
                             cxxopts::value<std::string>())  // source
           ("n,num_runs", "Number of runs (ignored if multiple sources passed)",
            cxxopts::value<int>());  // runs
-      if (algorithm == "Breadth First Search" ||
-          algorithm == "Single Source Shortest Path") {
-        options.add_options()("validate", "CPU validation");  // validate
-      }
     } else {
       options.add_options()("n,num_runs", "Number of runs",
                             cxxopts::value<int>());  // runs
+    }
+
+    if (algorithm == "Breadth First Search" ||
+        algorithm == "Single Source Shortest Path" ||
+        algorithm == "Minimum Spanning Tree") {
+      options.add_options()("validate", "CPU validation");  // validate
     }
 
     // Parse command line arguments
