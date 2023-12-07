@@ -3,6 +3,7 @@ add_subdirectory(sssp)
 add_subdirectory(bfs)
 add_subdirectory(pr)
 add_subdirectory(bc)
+add_subdirectory(mst)
 
 # metrics collection only supported for above algorithms
 if (NOT ESSENTIALS_COLLECT_METRICS)
@@ -14,7 +15,6 @@ add_subdirectory(hits)
 add_subdirectory(kcore)
 add_subdirectory(spmv)
 add_subdirectory(spgemm)
-add_subdirectory(mst)
 add_subdirectory(tc)
 # end /* Add algorithms' subdirectories */
 

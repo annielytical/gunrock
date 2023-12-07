@@ -1,57 +1,13 @@
 #include <gunrock/algorithms/algorithms.hxx>
 #include <gunrock/algorithms/mst.hxx>
+#include <gunrock/io/parameters.hxx>
+#include <gunrock/util/performance.hxx>
 #include "mst_cpu.hxx"  // Reference implementation
 #include <cxxopts.hpp>
 #include <iomanip>
 
 using namespace gunrock;
 using namespace memory;
-
-struct parameters_t {
-  std::string filename;
-  cxxopts::Options options;
-  bool validate;
-
-  /**
-   * @brief Construct a new parameters object and parse command line arguments.
-   *
-   * @param argc Number of command line arguments.
-   * @param argv Command line arguments.
-   */
-  parameters_t(int argc, char** argv)
-      : options(argv[0], "Minimum Spanning Tree example") {
-    // Add command line options
-    options.add_options()("help", "Print help")                      // help
-        ("validate", "CPU validation")                               // validate
-        ("m,market", "Matrix file", cxxopts::value<std::string>());  // mtx
-
-    // Parse command line arguments
-    auto result = options.parse(argc, argv);
-
-    if (result.count("help") || (result.count("market") == 0)) {
-      std::cout << options.help({""}) << std::endl;
-      std::exit(0);
-    }
-
-    if (result.count("market") == 1) {
-      filename = result["market"].as<std::string>();
-      if (util::is_market(filename)) {
-      } else {
-        std::cout << options.help({""}) << std::endl;
-        std::exit(0);
-      }
-    } else {
-      std::cout << options.help({""}) << std::endl;
-      std::exit(0);
-    }
-
-    if (result.count("validate") == 1) {
-      validate = true;
-    } else {
-      validate = false;
-    }
-  }
-};
 
 void test_mst(int num_arguments, char** argument_array) {
   // --
@@ -68,7 +24,12 @@ void test_mst(int num_arguments, char** argument_array) {
   // IO
 
   csr_t csr;
-  parameters_t params(num_arguments, argument_array);
+  gunrock::io::cli::parameters_t params(num_arguments, argument_array,
+                                        "Minimum Spanning Tree");
+
+  // Parse tags
+  std::vector<std::string> tag_vect;
+  gunrock::io::cli::parse_tag_string(params.tag_string, &tag_vect);
 
   io::matrix_market_t<vertex_t, edge_t, weight_t> mm;
   auto [properties, coo] = mm.load(params.filename);
@@ -89,16 +50,44 @@ void test_mst(int num_arguments, char** argument_array) {
   // Params and memory allocation
 
   vertex_t n_vertices = G.get_number_of_vertices();
+  size_t n_edges = G.get_number_of_edges();
   thrust::device_vector<weight_t> mst_weight(1);
 
   // --
   // GPU Run
 
-  float gpu_elapsed = gunrock::mst::run(G, mst_weight.data().get());
+  std::vector<float> run_times;
+  auto benchmark_metrics =
+      std::vector<benchmark::host_benchmark_t>(params.num_runs);
+  
+  for (int i = 0; i < params.num_runs; i++) {
+    benchmark::INIT_BENCH();
+
+    run_times.push_back(gunrock::mst::run(G, mst_weight.data().get()));
+
+    benchmark::host_benchmark_t metrics = benchmark::EXTRACT();
+    benchmark_metrics[i] = metrics;
+
+    benchmark::DESTROY_BENCH();
+  }
+
+  // Export metrics
+  if (params.export_metrics) {
+    // Placeholder since MST does not use sources
+    std::vector<int> src_placeholder;
+
+    gunrock::util::stats::export_performance_stats(
+        benchmark_metrics, n_edges, n_vertices, run_times, "mst",
+        params.filename, "market", params.json_dir, params.json_file,
+        src_placeholder, tag_vect, num_arguments, argument_array);
+  }
+
+  // Print info for last run
   thrust::host_vector<weight_t> h_mst_weight = mst_weight;
   std::cout << "GPU MST Weight: " << std::fixed << std::setprecision(4)
             << h_mst_weight[0] << std::endl;
-  std::cout << "GPU Elapsed Time : " << gpu_elapsed << " (ms)" << std::endl;
+  std::cout << "GPU Elapsed Time : " << run_times[params.num_runs - 1]
+            << " (ms)" << std::endl;
 
   // --
   // CPU Run

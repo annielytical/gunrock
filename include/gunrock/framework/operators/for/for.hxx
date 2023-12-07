@@ -36,6 +36,16 @@ execute(frontier_t& f, func_t op, gcuda::multi_context_t& context) {
                    f.begin(),  // Begin: 0
                    f.end(),    // End: # of V/E
                    [=] __device__(type_t const& x) {
+
+#if (ESSENTIALS_COLLECT_METRICS)
+                     if (type == parallel_for_each_t::vertex) {
+                       benchmark::LOG_VERTEX_VISITED(1);
+                     } else {
+                       benchmark::LOG_EDGE_VISITED(1);
+                       benchmark::LOG_VERTEX_VISITED(2);
+                     }
+#endif
+
                      if (gunrock::util::limits::is_valid(x))
                        op(x);
                    }  // Unary Operator
