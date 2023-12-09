@@ -236,16 +236,18 @@ struct enactor_t
     auto frontier1 = &(this->frontiers[1]);
 
     // Execute filter operator to get min weights
-    operators::filter::execute<operators::filter_algorithm_t::remove>(
-        G, get_upper_triangle, frontier0, frontier1, context);
-
+    if (this->iteration == 0) {
+      operators::filter::execute<operators::filter_algorithm_t::remove>(
+        G, get_upper_triangle, frontier0, frontier0, context);
+    }
+    
     // Execute filter operator to get min weights
     operators::filter::execute<operators::filter_algorithm_t::remove>(
-        G, get_min_weights, frontier1, frontier0, context);
+        G, get_min_weights, frontier0, frontier1, context);
 
     // Execute parallel for operator to get min neighbors
     operators::parallel_for::execute<operators::parallel_for_each_t::element>(
-        *frontier0, get_min_neighbors, context);
+        *frontier1, get_min_neighbors, context);
 
     // Execute parallel for operator to add weights to MST
     operators::parallel_for::execute<operators::parallel_for_each_t::vertex>(
