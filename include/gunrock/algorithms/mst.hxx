@@ -81,10 +81,13 @@ struct problem_t : gunrock::problem_t<graph_t> {
 };
 
 template <typename problem_t>
-struct enactor_t : gunrock::enactor_t<problem_t, frontier::frontier_kind_t::edge_frontier> {
+struct enactor_t
+    : gunrock::enactor_t<problem_t, frontier::frontier_kind_t::edge_frontier> {
   enactor_t(problem_t* _problem,
             std::shared_ptr<gcuda::multi_context_t> _context)
-      : gunrock::enactor_t<problem_t, frontier::frontier_kind_t::edge_frontier>(_problem, _context) {}
+      : gunrock::enactor_t<problem_t, frontier::frontier_kind_t::edge_frontier>(
+            _problem,
+            _context) {}
 
   using vertex_t = typename problem_t::vertex_t;
   using edge_t = typename problem_t::edge_t;
@@ -120,6 +123,17 @@ struct enactor_t : gunrock::enactor_t<problem_t, frontier::frontier_kind_t::edge
     thrust::fill_n(policy, min_neighbors, P->n_vertices,
                    std::numeric_limits<weight_t>::max());
 
+    auto get_upper_triangle = [G] __host__ __device__(edge_t const& e) -> bool {
+      // Get the upper triangle from the matrix. Since it is symmetric,
+      // we only need one half.
+      auto source = G.get_source_vertex(e);
+      auto dest = G.get_destination_vertex(e);
+      if (source < dest) {
+        return true;
+      }
+      return false;
+    };
+
     auto get_min_weights = [min_weights, roots, G] __host__ __device__(
                                edge_t const& e  // id of edge
                                ) -> bool {
@@ -132,7 +146,7 @@ struct enactor_t : gunrock::enactor_t<problem_t, frontier::frontier_kind_t::edge
 
       // If the source and destination are already part of same super vertex, do
       // not check
-      if (source < dest && roots[source] != roots[dest]) {
+      if (roots[source] != roots[dest]) {
         auto old_weight1 =
             math::atomic::min(&(min_weights[roots[source]]), weight);
         auto old_weight2 =
@@ -159,7 +173,7 @@ struct enactor_t : gunrock::enactor_t<problem_t, frontier::frontier_kind_t::edge
       auto dest = G.get_destination_vertex(e);
       auto weight = G.get_edge_weight(e);
 
-      if (source < dest && roots[source] != roots[dest]) {
+      if (roots[source] != roots[dest]) {
         if (weight == min_weights[roots[source]]) {
           math::atomic::min(&(min_neighbors[roots[source]]), e);
         }
@@ -218,16 +232,20 @@ struct enactor_t : gunrock::enactor_t<problem_t, frontier::frontier_kind_t::edge
       return;
     };
 
-    auto in_frontier = &(this->frontiers[0]);
-    auto out_frontier = &(this->frontiers[1]);
+    auto frontier0 = &(this->frontiers[0]);
+    auto frontier1 = &(this->frontiers[1]);
 
     // Execute filter operator to get min weights
     operators::filter::execute<operators::filter_algorithm_t::remove>(
-        G, get_min_weights, in_frontier, out_frontier, context);
+        G, get_upper_triangle, frontier0, frontier1, context);
+
+    // Execute filter operator to get min weights
+    operators::filter::execute<operators::filter_algorithm_t::remove>(
+        G, get_min_weights, frontier1, frontier0, context);
 
     // Execute parallel for operator to get min neighbors
     operators::parallel_for::execute<operators::parallel_for_each_t::element>(
-        *out_frontier, get_min_neighbors, context);
+        *frontier0, get_min_neighbors, context);
 
     // Execute parallel for operator to add weights to MST
     operators::parallel_for::execute<operators::parallel_for_each_t::vertex>(
