@@ -132,6 +132,7 @@ struct enactor_t : gunrock::enactor_t<problem_t> {
 
       // If the source and destination are already part of same super vertex, do
       // not check
+      // Operate on edge and reverse edge together
       if (source < dest && roots[source] != roots[dest]) {
         auto old_weight1 =
             math::atomic::min(&(min_weights[roots[source]]), weight);
@@ -151,21 +152,18 @@ struct enactor_t : gunrock::enactor_t<problem_t> {
       // Find the minimum neighbor for each vertex. Use atomic min to break ties
       // between neighbors that have the same weight.
       // Consistent ordering (using min here) will prevent loops.
-      // Edges with dest < source are flipped so that reverse edges are treated
-      // as equivalent. Must check that the weight equals the min weight for
+      // Must check that the weight equals the min weight for
       // that vertex, because some edges can be added to the frontier that are
       // later beaten by lower weights.
       auto source = G.get_source_vertex(e);
       auto dest = G.get_destination_vertex(e);
       auto weight = G.get_edge_weight(e);
 
-      if (source < dest && roots[source] != roots[dest]) {
-        if (weight == min_weights[roots[source]]) {
-          math::atomic::min(&(min_neighbors[roots[source]]), e);
-        }
-        if (weight == min_weights[roots[dest]]) {
-          math::atomic::min(&(min_neighbors[roots[dest]]), e);
-        }
+      if (weight == min_weights[roots[source]]) {
+        math::atomic::min(&(min_neighbors[roots[source]]), e);
+      }
+      if (weight == min_weights[roots[dest]]) {
+        math::atomic::min(&(min_neighbors[roots[dest]]), e);
       }
     };
 
