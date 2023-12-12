@@ -165,21 +165,18 @@ struct enactor_t
       // Find the minimum neighbor for each vertex. Use atomic min to break ties
       // between neighbors that have the same weight.
       // Consistent ordering (using min here) will prevent loops.
-      // Edges with dest < source are flipped so that reverse edges are treated
-      // as equivalent. Must check that the weight equals the min weight for
+      // Must check that the weight equals the min weight for
       // that vertex, because some edges can be added to the frontier that are
       // later beaten by lower weights.
       auto source = G.get_source_vertex(e);
       auto dest = G.get_destination_vertex(e);
       auto weight = G.get_edge_weight(e);
 
-      if (roots[source] != roots[dest]) {
-        if (weight == min_weights[roots[source]]) {
-          math::atomic::min(&(min_neighbors[roots[source]]), e);
-        }
-        if (weight == min_weights[roots[dest]]) {
-          math::atomic::min(&(min_neighbors[roots[dest]]), e);
-        }
+      if (weight == min_weights[roots[source]]) {
+        math::atomic::min(&(min_neighbors[roots[source]]), e);
+      }
+      if (weight == min_weights[roots[dest]]) {
+        math::atomic::min(&(min_neighbors[roots[dest]]), e);
       }
     };
 
@@ -238,9 +235,9 @@ struct enactor_t
     // Execute filter operator to get min weights
     if (this->iteration == 0) {
       operators::filter::execute<operators::filter_algorithm_t::remove>(
-        G, get_upper_triangle, frontier0, frontier0, context);
+          G, get_upper_triangle, frontier0, frontier0, context);
     }
-    
+
     // Execute filter operator to get min weights
     operators::filter::execute<operators::filter_algorithm_t::remove>(
         G, get_min_weights, frontier0, frontier1, context);
