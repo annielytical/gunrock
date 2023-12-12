@@ -123,9 +123,8 @@ struct enactor_t
     thrust::fill_n(policy, min_neighbors, P->n_vertices,
                    std::numeric_limits<weight_t>::max());
 
-    auto get_upper_triangle = [G] __host__ __device__(edge_t const& e) -> bool {
-      // Get the upper triangle from the matrix. Since it is symmetric,
-      // we only need one half.
+    auto get_src_lt_dest = [G] __host__ __device__(edge_t const& e) -> bool {
+      // Since the matrix is symmetric, we only need half of it
       auto source = G.get_source_vertex(e);
       auto dest = G.get_destination_vertex(e);
       if (source < dest) {
@@ -232,10 +231,10 @@ struct enactor_t
     auto frontier0 = &(this->frontiers[0]);
     auto frontier1 = &(this->frontiers[1]);
 
-    // Execute filter operator to get min weights
+    // Execute filter operator to get edges with src < dest
     if (this->iteration == 0) {
       operators::filter::execute<operators::filter_algorithm_t::remove>(
-          G, get_upper_triangle, frontier0, frontier0, context);
+          G, get_src_lt_dest, frontier0, frontier0, context);
     }
 
     // Execute filter operator to get min weights
