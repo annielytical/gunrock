@@ -123,7 +123,7 @@ struct enactor_t
     thrust::fill_n(policy, min_neighbors, P->n_vertices,
                    std::numeric_limits<weight_t>::max());
 
-    auto get_src_lt_dest = [G] __host__ __device__(edge_t const& e) -> bool {
+    auto get_matrix_half = [G] __host__ __device__(edge_t const& e) -> bool {
       // Since the matrix is symmetric, we only need half of it
       auto source = G.get_source_vertex(e);
       auto dest = G.get_destination_vertex(e);
@@ -234,7 +234,7 @@ struct enactor_t
     // Execute filter operator to get edges with src < dest
     if (this->iteration == 0) {
       operators::filter::execute<operators::filter_algorithm_t::remove>(
-          G, get_src_lt_dest, frontier0, frontier0, context);
+          G, get_matrix_half, frontier0, frontier0, context);
     }
 
     // Execute filter operator to get min weights
